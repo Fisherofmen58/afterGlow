@@ -174,7 +174,7 @@
    low/mid cloud blocks the show, and high humidity flattens saturation.
 --------------------------------------------------------------------- */
 
-const DEFAULT_LOC = { name: "Clayton, NC", lat: 35.6501, lon: -78.4564 };
+const DEFAULT_LOC = { name: "Willow Spring, NC", lat: 35.5257, lon: -78.6797 };
 const $ = (id) => document.getElementById(id);
 
 let state = {
@@ -190,7 +190,7 @@ function loadLoc(){
     const saved = JSON.parse(localStorage.getItem("afterglow_loc"));
     if(saved && saved.lat) return saved;
   }catch(e){}
-  return DEFAULT_LOC;
+  return null;
 }
 function saveLoc(loc){
   state.loc = loc;
@@ -312,6 +312,13 @@ function nearestHourIdx(hourlyTimes, targetIso){
   });
   return best;
 }
+function parseLocalDate(dateStr){
+  // dateStr like "2026-07-07" — parsing this directly with `new Date()` treats it as
+  // UTC midnight, which rolls back a day in any timezone behind UTC. Build it from
+  // local components instead so "today" always means today.
+  const [y, m, d] = dateStr.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
 
 function render(){
   const { daily, hourly, activeDay, mode, loc } = state;
@@ -338,7 +345,7 @@ function render(){
   html += `<div class="hero ${dark ? 'dark' : ''}">
     <div class="hero-swatch" style="background:${gradient}"></div>
     <div class="hero-content">
-      <div class="eyebrow">${loc.name} · ${new Date(daily.time[activeDay]).toLocaleDateString([], { weekday:'long', month:'short', day:'numeric' })}</div>
+      <div class="eyebrow">${loc.name} · ${parseLocalDate(daily.time[activeDay]).toLocaleDateString([], { weekday:'long', month:'short', day:'numeric' })}</div>
       <div class="score-row">
         <div class="score-num">${s.score}</div>
         <div class="score-label">${label(s.score)} ${mode === "evening" ? "sunset" : "sunrise"}</div>
@@ -362,7 +369,7 @@ function render(){
     const evt = mode === "evening" ? daily.sunset[i] : daily.sunrise[i];
     const j = nearestHourIdx(hourly.time, evt);
     const ds = scoreEvent(hourly, j);
-    const dow = i === 0 ? "Today" : new Date(t).toLocaleDateString([], { weekday: "short" });
+    const dow = i === 0 ? "Today" : parseLocalDate(t).toLocaleDateString([], { weekday: "short" });
     html += `<div class="day-card ${i===activeDay?'active':''}" data-day="${i}">
       <div class="dow">${dow}</div>
       <div class="swatch" style="background:${ds ? swatchGradient(ds, mode) : '#2a3040'}"></div>
@@ -472,7 +479,27 @@ $("useGps").addEventListener("click", () => {
 });
 
 // Init
-boot(loadLoc());
+function initLocation(){
+  const saved = loadLoc();
+  if(saved){ boot(saved); return; }
+
+  if(!navigator.geolocation){
+    boot(DEFAULT_LOC);
+    return;
+  }
+  // No saved location yet — ask for it up front instead of silently defaulting.
+  $("app").innerHTML = '<div class="loading">Requesting your location…</div>';
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const loc = { name: "Current location", lat: pos.coords.latitude, lon: pos.coords.longitude };
+      saveLoc(loc);
+      boot(loc);
+    },
+    () => { boot(DEFAULT_LOC); }, // denied, timed out, or unavailable — fall back quietly
+    { timeout: 8000 }
+  );
+}
+initLocation();
 </script>
 </body>
 </html>
