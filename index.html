@@ -300,7 +300,8 @@ function addMinutes(iso, mins){
   return new Date(new Date(iso).getTime() + mins*60000);
 }
 function fmt(d){
-  return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const dt = (d instanceof Date) ? d : new Date(d);
+  return dt.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 function nearestHourIdx(hourlyTimes, targetIso){
   const target = new Date(targetIso).getTime();
