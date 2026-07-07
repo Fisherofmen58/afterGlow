@@ -182,7 +182,7 @@ let state = {
   daily: null,
   hourly: null,
   activeDay: 0,
-  mode: "evening" // or "morning"
+  mode: "morning" // or "evening"
 };
 
 function loadLoc(){
@@ -360,8 +360,8 @@ function render(){
   </div>`;
 
   html += `<div class="toggle-row">
-    <button class="toggle-btn ${mode==='evening'?'active':''}" data-mode="evening">Sunset</button>
     <button class="toggle-btn ${mode==='morning'?'active':''}" data-mode="morning">Sunrise</button>
+    <button class="toggle-btn ${mode==='evening'?'active':''}" data-mode="evening">Sunset</button>
   </div>`;
 
   html += `<div class="section-title">Next 7 days</div><div class="days">`;
