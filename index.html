@@ -331,7 +331,9 @@ const dtan = d => Math.tan(d * D2R);
 const dasinc = x => Math.asin(Math.max(-1, Math.min(1, x))) * R2D;
 const dacosc = x => Math.acos(Math.max(-1, Math.min(1, x))) * R2D;
 
-function solarAzimuth(date, lat, lon){
+// Shared low-precision solar position bits (declination + equation of time)
+// used by both the azimuth calc and the twilight calc below.
+function solarPosition(date){
   const JD = date.getTime() / 86400000 + 2440587.5;
   const T = (JD - 2451545.0) / 36525;
 
@@ -364,6 +366,12 @@ function solarAzimuth(date, lat, lon){
       - 1.25 * e * e * dsin(2 * M)
   );
 
+  return { decl, eqTime };
+}
+
+function solarAzimuth(date, lat, lon){
+  const { decl, eqTime } = solarPosition(date);
+
   // Note: this assumes the browser's timezone matches the forecast location's
   // timezone (same assumption the rest of the app makes when it does new Date(iso)
   // on Open-Meteo's local-time strings). Fine for "check the sky where I am."
@@ -390,6 +398,27 @@ function compassDir(deg){
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
+/* ---------- Civil twilight (first light / last light) ----------
+   Same NOAA/Meeus low-precision approach as the azimuth calc above, but
+   solved for the moment the sun crosses 6° below the horizon (zenith 96°)
+   instead of a known clock time. "dawn" = first light before sunrise,
+   "dusk" = last light after sunset. Returns null in the rare case the sun
+   doesn't cross that altitude at all that day (deep polar latitudes). */
+function civilTwilight(eventDate, lat, lon, which){
+  const { decl, eqTime } = solarPosition(eventDate);
+  const zenith = 96;
+  const cosHA = (dcos(zenith) - dsin(lat) * dsin(decl)) / (dcos(lat) * dcos(decl));
+  if (cosHA > 1 || cosHA < -1) return null;
+  const ha = dacosc(cosHA);
+
+  const trueSolarTime = which === "dawn" ? (720 - ha * 4) : (720 + ha * 4);
+  let utcMinutes = trueSolarTime - eqTime - 4 * lon;
+  utcMinutes = ((utcMinutes % 1440) + 1440) % 1440;
+
+  const dayStartUTC = Date.UTC(eventDate.getUTCFullYear(), eventDate.getUTCMonth(), eventDate.getUTCDate());
+  return new Date(dayStartUTC + utcMinutes * 60000);
+}
+
 function render(){
   const { daily, hourly, activeDay, mode, loc } = state;
   const app = $("app");
@@ -412,6 +441,11 @@ function render(){
   const azimuth = solarAzimuth(new Date(eventIso), loc.lat, loc.lon);
   const azimuthLabel = `${Math.round(azimuth)}° ${compassDir(azimuth)}`;
 
+  const twilight = mode === "evening"
+    ? civilTwilight(new Date(sunset), loc.lat, loc.lon, "dusk")
+    : civilTwilight(new Date(sunrise), loc.lat, loc.lon, "dawn");
+  const twilightLabel = mode === "evening" ? "Last light" : "First light";
+
   let html = "";
 
   html += `<div class="hero">
@@ -425,6 +459,7 @@ function render(){
       <div class="hero-sub">${blurb(s, mode)}</div>
       <div class="hero-times">
         <div class="hero-time-item"><div class="k">${mode === "evening" ? "Sunset" : "Sunrise"}</div><div class="v">${fmtTime(eventIso)}</div></div>
+        ${twilight ? `<div class="hero-time-item"><div class="k">${twilightLabel}</div><div class="v">${fmt(twilight)}</div></div>` : ""}
         <div class="hero-time-item"><div class="k">Direction</div><div class="v">${azimuthLabel}</div></div>
         <div class="hero-time-item"><div class="k">Golden hour</div><div class="v">${fmt(goldenStart)}–${fmt(goldenEnd)}</div></div>
         <div class="hero-time-item"><div class="k">Blue hour</div><div class="v">${fmt(blueStart)}–${fmt(blueEnd)}</div></div>
